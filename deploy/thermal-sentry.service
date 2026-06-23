@@ -1,0 +1,44 @@
+# systemd unit for thermal-sentry on a Raspberry Pi.
+#
+# Install with deploy/install_pi.sh, or manually:
+#   sudo cp deploy/thermal-sentry.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now thermal-sentry
+#
+# Logs:    journalctl -u thermal-sentry -f
+# Restart: sudo systemctl restart thermal-sentry
+
+[Unit]
+Description=thermal-sentry edge thermal AI (MLX90640 + dashboard)
+Documentation=https://github.com/OCT0PUSPR/thermal-sentry
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+Group=pi
+
+# Project lives here; adjust if you cloned elsewhere.
+WorkingDirectory=/home/pi/thermal-sentry
+
+# Load configuration (copy .env.example -> .env and edit).
+EnvironmentFile=-/home/pi/thermal-sentry/.env
+
+# Use the virtualenv created by install_pi.sh. On the Pi the source is mlx90640.
+Environment=TS_SOURCE=mlx90640
+ExecStart=/home/pi/thermal-sentry/.venv/bin/thermal-sentry run --source mlx90640 --web
+
+Restart=on-failure
+RestartSec=5
+# Give the I2C bus a moment on boot.
+ExecStartPre=/bin/sleep 3
+
+# Hardening (relaxed enough to keep I2C / GPIO access working).
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=false
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

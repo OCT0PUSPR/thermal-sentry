@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>thermal-sentry · operations</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo-dot"></span>
+      <h1>thermal&#8203;<span class="accent">-sentry</span></h1>
+      <span class="tag">edge thermal AI</span>
+    </div>
+    <div class="conn">
+      <span id="conn-dot" class="conn-dot off"></span>
+      <span id="conn-label">connecting…</span>
+      <span id="source-label" class="source-pill">—</span>
+    </div>
+  </header>
+
+  <main class="grid">
+    <!-- Live thermal feed -->
+    <section class="panel feed">
+      <div class="panel-head">
+        <h2>Live Thermal Feed</h2>
+        <div class="feed-tools">
+          <button id="zone-toggle" class="btn">Draw Zone</button>
+          <button id="zone-clear" class="btn ghost">Clear Zones</button>
+        </div>
+      </div>
+      <div class="canvas-wrap">
+        <canvas id="thermal" width="640" height="480"></canvas>
+        <canvas id="overlay" width="640" height="480"></canvas>
+      </div>
+      <div class="legend">
+        <span class="legend-min" id="legend-min">18&deg;C</span>
+        <div class="legend-bar" id="legend-bar"></div>
+        <span class="legend-max" id="legend-max">40&deg;C</span>
+      </div>
+    </section>
+
+    <!-- Stats + gauges -->
+    <section class="panel stats">
+      <div class="panel-head"><h2>Telemetry</h2></div>
+      <div class="gauges">
+        <div class="gauge">
+          <div class="gauge-value" id="g-people">0</div>
+          <div class="gauge-label">People</div>
+        </div>
+        <div class="gauge">
+          <div class="gauge-value" id="g-maxtemp">—</div>
+          <div class="gauge-label">Max Temp</div>
+        </div>
+        <div class="gauge">
+          <div class="gauge-value" id="g-tracks">0</div>
+          <div class="gauge-label">Tracks</div>
+        </div>
+        <div class="gauge">
+          <div class="gauge-value" id="g-fps">0</div>
+          <div class="gauge-label">FPS</div>
+        </div>
+      </div>
+      <ul class="kv">
+        <li><span>Frames</span><b id="s-frames">0</b></li>
+        <li><span>Scene min</span><b id="s-min">—</b></li>
+        <li><span>Total alerts</span><b id="s-alerts">0</b></li>
+        <li><span>Source</span><b id="s-source">—</b></li>
+      </ul>
+    </section>
+
+    <!-- Alerts feed -->
+    <section class="panel alerts">
+      <div class="panel-head">
+        <h2>Alerts</h2>
+        <button id="alerts-clear" class="btn ghost small">Clear</button>
+      </div>
+      <ul id="alerts-list" class="alerts-list">
+        <li class="alert-empty">No alerts yet.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="footbar">
+    <span>thermal-sentry &middot; MIT &middot; OCT0PUSPR</span>
+    <span id="ts">—</span>
+  </footer>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

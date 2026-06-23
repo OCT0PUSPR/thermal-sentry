@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install dependencies (no hardware, no heavy weights)
+        run: |
+          python -m pip install --upgrade pip
+          # Core + dev deps only. Pi/hardware libs are intentionally NOT installed.
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Ruff lint
+        run: ruff check thermalsentry tests
+
+      - name: Verify package imports without hardware libraries
+        run: |
+          python -c "import thermalsentry; print('thermalsentry', thermalsentry.__version__)"
+          python -c "import thermalsentry.sensors.mlx90640 as m; print('mlx import-guarded OK')"
+
+      - name: Compile all sources
+        run: python -m compileall thermalsentry tests
+
+      - name: Run tests
+        run: pytest -q --cov=thermalsentry --cov-report=term-missing
+
+      - name: Smoke-test the simulate pipeline (headless, 10 frames)
+        run: |
+          python -m thermalsentry.cli run --source simulate --frames 10 --fps 50

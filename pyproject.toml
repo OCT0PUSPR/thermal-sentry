@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "thermal-sentry"
+version = "0.1.0"
+description = "Edge thermal AI for Raspberry Pi: detect people, heat-sources and thermal anomalies from an MLX90640, with a live web dashboard and alerting."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "OCT0PUSPR" }]
+keywords = [
+    "thermal",
+    "raspberry-pi",
+    "edge-ai",
+    "mlx90640",
+    "computer-vision",
+    "iot",
+    "people-counting",
+    "anomaly-detection",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+    "Topic :: System :: Monitoring",
+]
+
+dependencies = [
+    "numpy>=1.23,<3",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "pydantic>=2.5,<3",
+    "pydantic-settings>=2.1",
+    "httpx>=0.26",
+    "pillow>=10.0",
+    "websockets>=12.0",
+]
+
+[project.optional-dependencies]
+accel = ["scipy>=1.10", "opencv-python-headless>=4.8"]
+pi = [
+    "adafruit-circuitpython-mlx90640>=1.3",
+    "adafruit-blinka>=8.0",
+    "scipy>=1.10",
+]
+dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.3", "scipy>=1.10"]
+
+[project.urls]
+Homepage = "https://github.com/OCT0PUSPR/thermal-sentry"
+Repository = "https://github.com/OCT0PUSPR/thermal-sentry"
+Issues = "https://github.com/OCT0PUSPR/thermal-sentry/issues"
+
+[project.scripts]
+thermal-sentry = "thermalsentry.cli:main"
+
+[tool.setuptools]
+packages = [
+    "thermalsentry",
+    "thermalsentry.sensors",
+    "thermalsentry.processing",
+    "thermalsentry.detection",
+    "thermalsentry.alerts",
+    "thermalsentry.web",
+]
+
+[tool.setuptools.package-data]
+"thermalsentry.web" = ["static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py39"
+
+[tool.ruff.lint]
+# NB: pyupgrade ("UP") is intentionally NOT selected. The project supports
+# Python 3.9 at runtime and some annotations (pydantic models / settings) are
+# evaluated at runtime, so typing.Optional / typing.List are deliberate.
+select = ["E", "F", "W", "I", "B"]
+ignore = [
+    "E501",  # line length is handled by the formatter / left to judgement
+    "B008",  # FastAPI uses callables in argument defaults (Depends/Body)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]

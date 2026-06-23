@@ -1,0 +1,18 @@
+# Raspberry Pi hardware-only dependencies for thermal-sentry.
+#
+# Install these ON THE PI (in addition to requirements.txt) to drive the real
+# Melexis MLX90640 thermal sensor over I2C. They are import-guarded in the code,
+# so the package imports and runs in --simulate mode WITHOUT them.
+#
+#   pip install -r requirements.txt -r requirements-pi.txt
+#
+# NOTE: do not install these on a laptop/CI -- adafruit-blinka / RPi.GPIO expect
+# Raspberry Pi hardware and GPIO access.
+
+adafruit-circuitpython-mlx90640>=1.3
+adafruit-blinka>=8.0
+RPi.GPIO>=0.7 ; platform_machine == "armv7l" or platform_machine == "aarch64"
+
+# Optional accelerators that are very much worth it on the Pi:
+scipy>=1.10
+opencv-python-headless>=4.8

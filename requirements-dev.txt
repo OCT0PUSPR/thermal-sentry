@@ -1,0 +1,7 @@
+# Development + CI dependencies (lint + tests). No hardware, no heavy weights.
+-r requirements.txt
+
+pytest>=7.4
+pytest-cov>=4.1
+ruff>=0.3
+scipy>=1.10            # exercises the scipy-accelerated code paths in tests

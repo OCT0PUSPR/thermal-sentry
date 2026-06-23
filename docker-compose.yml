@@ -1,0 +1,35 @@
+# docker-compose for thermal-sentry.
+#
+# Laptop / CI (simulate, zero hardware):
+#   docker compose up --build
+#   open http://localhost:8000
+#
+# Raspberry Pi with a real MLX90640: set TS_SOURCE=mlx90640, install the Pi
+# extras in a Pi-specific image, and uncomment the `devices` block to pass the
+# I2C bus through to the container.
+
+services:
+  thermal-sentry:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: thermal-sentry:latest
+    container_name: thermal-sentry
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # Default to the hardware-free simulator. Override on the Pi.
+      TS_SOURCE: "${TS_SOURCE:-simulate}"
+      TS_WEB_HOST: "0.0.0.0"
+      TS_WEB_PORT: "8000"
+      TS_FPS: "${TS_FPS:-8}"
+      # Secrets via env / .env -- never baked into the image.
+      TS_ALERTS_WEBHOOK_URL: "${TS_ALERTS_WEBHOOK_URL:-}"
+    volumes:
+      - ./captures:/app/captures
+    # --- Raspberry Pi hardware passthrough (uncomment on the Pi) -------------
+    # devices:
+    #   - "/dev/i2c-1:/dev/i2c-1"
+    # group_add:
+    #   - i2c
