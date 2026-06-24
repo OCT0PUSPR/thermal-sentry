@@ -1,7 +1,10 @@
-# Development + CI dependencies (lint + tests). No hardware, no heavy weights.
+# Development + CI dependencies (lint, type-check, security, tests).
+# No hardware, no heavy ML training weights (torch lives in requirements-train.txt).
 -r requirements.txt
 
 pytest>=7.4
 pytest-cov>=4.1
 ruff>=0.3
+mypy>=1.8
+bandit>=1.7
 scipy>=1.10            # exercises the scipy-accelerated code paths in tests

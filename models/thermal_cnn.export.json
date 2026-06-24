@@ -1,0 +1,9 @@
+{
+  "fp32_onnx": "models/thermal_cnn.onnx",
+  "fp32_onnx_kb": 90.7,
+  "int8_onnx": "models/thermal_cnn_int8.onnx",
+  "int8_onnx_kb": 39.3,
+  "torch_static_int8_kb": null,
+  "tflite_int8": null,
+  "tflite_int8_kb": null
+}

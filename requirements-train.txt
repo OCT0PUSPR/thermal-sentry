@@ -1,0 +1,30 @@
+# Training + export dependencies for the from-scratch thermal CNN.
+#
+# These are NOT needed to RUN thermal-sentry (the runtime uses onnxruntime for
+# the ML detector backend, installed via requirements-dev / on the Pi). Install
+# these only on a dev/GPU box to TRAIN, EXPORT and QUANTISE the model:
+#
+#   pip install -r requirements.txt -r requirements-train.txt
+#   python scripts/train.py        # train (MPS > CUDA > CPU auto-selected)
+#   python scripts/export.py       # FP32 ONNX + INT8 (static QDQ) ONNX
+#   python scripts/eval.py         # held-out metrics + INT8 accuracy delta
+#
+# torch is import-guarded everywhere in the package, so the numpy-only CI path
+# (and the Pi runtime) never require it.
+
+-r requirements.txt
+
+torch>=2.0           # the model is built from primitive nn blocks (no model zoo)
+onnx>=1.14           # ONNX export
+onnxruntime>=1.16    # INT8 static quantisation + cross-platform inference
+
+# --- Optional, build-time only: INT8 TFLite for the Pi -----------------------
+# TFLite conversion needs the heavy TensorFlow tooling and frequently does NOT
+# build/run on Apple Silicon. The INT8 *ONNX* model is the portable default; use
+# TFLite only if you can run these on your build box (e.g. an x86 Linux GPU box):
+#
+#   pip install tensorflow onnx2tf
+#   python scripts/export.py        # will then also emit thermal_cnn_int8.tflite
+#
+# tensorflow>=2.15
+# onnx2tf>=1.19

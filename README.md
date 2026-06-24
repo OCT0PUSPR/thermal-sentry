@@ -289,6 +289,80 @@ Thermal detection is only as good as its thresholds. Tips:
 - **Display scaling.** `TS_TEMP_DISPLAY_MIN_C` / `..._MAX_C` only affect the *colormap* range on
   the dashboard, not detection.
 
+## 🧠 Learned model (from-scratch CNN) — optional ML detector
+
+`thermal-sentry` ships a **small CNN built from scratch in PyTorch** (plain
+`conv`/`BN`/`ReLU`/`pool` blocks — no pretrained backbones) with **two heads**:
+
+- a **classification** head (`background` / `person` / `animal` / `hotspot`), and
+- a **center-heatmap** detection head that localises warm-body centers.
+
+It runs on the (lightly up-scaled) 24×32 thermal frame and is exposed as a
+**selectable detector backend** — the classical threshold+connected-components
+detector stays as the always-available fallback.
+
+```bash
+TS_ML_BACKEND=ml thermal-sentry run --simulate --web      # full-frame ML detector
+TS_ML_BACKEND=onnx thermal-sentry run --simulate          # ML refines classical labels
+TS_ML_BACKEND=classical thermal-sentry run --simulate     # heuristic only (default)
+```
+
+If the model file is missing or fails to load, the pipeline **silently falls
+back to the classical detector**, so it always runs.
+
+### Real measured metrics (held-out synthetic split)
+
+Trained locally on Apple-Silicon **MPS**, 6,000 train / 1,500 val frames, 30
+epochs, **~35 s**, **22,517 parameters**:
+
+| Classification acc | Macro-F1 | Localisation recall | Localisation precision |
+|---:|---:|---:|---:|
+| **0.991** | **0.991** | **0.988** | **0.992** |
+
+### Quantization for the Pi
+
+| Model | Size | Accuracy | Δ vs FP32 |
+|---|---:|---:|---:|
+| FP32 ONNX | 90.7 KB | 0.988 | — |
+| **INT8 ONNX** (static QDQ) | **39.3 KB** | 0.986 | **−0.25 pp** (−56.7 % size) |
+
+> INT8 **TFLite** export is attempted via `tensorflow`+`onnx2tf` but that heavy
+> tooling **does not build on Apple-Silicon macOS**, so the shipped edge artefact
+> is the **INT8 ONNX** (it runs on the Pi's CPU via `onnxruntime`). On an x86
+> Linux build box, `scripts/export.py` will additionally emit
+> `models/thermal_cnn_int8.tflite`.
+
+### Train / export / evaluate (local)
+
+```bash
+pip install -r requirements.txt -r requirements-train.txt   # torch, onnx, onnxruntime
+
+python scripts/train.py        # trains (MPS>CUDA>CPU auto) -> models/thermal_cnn.pt + report
+python scripts/export.py       # FP32 ONNX + INT8 (static QDQ) ONNX (+ TFLite if tooling runs)
+python scripts/eval.py         # held-out metrics + INT8-vs-FP32 accuracy delta
+```
+
+### Scale-up & retraining (more / real data, GPU)
+
+`scripts/retrain_scaleup.py` trains a stronger model — more synthetic frames and
+epochs on a GPU, and/or **fine-tuning on real recorded thermal clips**:
+
+```bash
+# 1. Record real frames on the Pi (each .npy is an (N, 24, 32) deg-C sequence):
+thermal-sentry run --source mlx90640 --record captures/real_clip.npy --frames 2000
+
+# 2. On a GPU box, weak-label them with the classical detector and scale up:
+python scripts/retrain_scaleup.py --real-glob "captures/*.npy" \
+    --n-train 40000 --epochs 60 --device cuda --out models/thermal_cnn_prod.pt
+
+# 3. Re-export + quantise the production checkpoint:
+python scripts/export.py --checkpoint models/thermal_cnn_prod.pt
+```
+
+For best accuracy, replace the weak-labels with hand annotations. See
+[`ARCHITECTURE.md`](ARCHITECTURE.md) for the full model + training + quantization
+write-up.
+
 ## 🛠️ Deployment (systemd)
 
 The Pi installer registers a service for you. Manually:
@@ -326,26 +400,39 @@ thermal-sentry/
 │   ├── processing/
 │   │   └── preprocess.py      # bilinear upscale, normalize, ironbow/inferno LUTs
 │   ├── detection/
-│   │   ├── detector.py        # threshold + connected-components + classify
+│   │   ├── detector.py        # threshold + CC + classify; routes to ML detector
 │   │   ├── tracker.py         # centroid/IOU tracker, stable IDs
 │   │   └── anomaly.py         # overheat / intrusion / loitering / crowding rules
-│   ├── alerts/
-│   │   └── manager.py         # console/JSONL/webhook/email, debounced
+│   ├── ml/                    # from-scratch two-head CNN (torch-guarded)
+│   │   ├── model.py           # ThermalNet: conv/BN/ReLU/pool + cls + heatmap heads
+│   │   ├── dataset.py         # synthetic + augmented frame/crop datasets (numpy)
+│   │   ├── train.py           # AdamW + cosine LR + metrics (MPS>CUDA>CPU)
+│   │   ├── eval.py            # held-out eval (FP32 vs INT8)
+│   │   ├── export.py          # ONNX + INT8 (static QDQ) ONNX (+ TFLite if able)
+│   │   └── backends.py        # selectable ML detector / crop-classifier backends
+│   ├── alerts/                # console/JSONL/webhook/email/MQTT/Telegram, debounced
+│   ├── persistence/           # SQLAlchemy event store + retention (Alembic)
+│   ├── observability.py       # structlog JSON logs + Prometheus metrics
+│   ├── runtime.py             # async runtime: queue + watchdog + recovery
 │   └── web/
-│       ├── server.py          # FastAPI + WebSocket + zones API
-│       └── static/            # index.html, app.js, style.css (dark dashboard)
-├── deploy/
-│   ├── thermal-sentry.service # systemd unit
-│   └── install_pi.sh          # Pi setup (I2C, deps, service)
-├── tests/                     # numpy-only pytest suite (no hardware/heavy deps)
-├── requirements.txt           # core (laptop + Pi)
+│       ├── server.py          # FastAPI + WebSocket + auth + history API
+│       ├── security.py        # API-key / session / CORS / headers
+│       └── static/            # index.html, app.js, style.css, login.html
+├── scripts/                   # train.py, export.py, eval.py, retrain_scaleup.py
+├── models/                    # tiny committed proof artefacts (ONNX, INT8 ONNX, .pt)
+├── alembic/                   # DB migrations
+├── deploy/                    # systemd unit + Pi installer
+├── tests/                     # pytest suite (numpy-only path; torch tests skip)
+├── requirements.txt           # core (laptop + Pi runtime)
 ├── requirements-pi.txt        # Pi-only hardware deps (adafruit, RPi.GPIO)
-├── requirements-dev.txt       # lint + test
+├── requirements-dev.txt       # lint + test (onnxruntime, sqlalchemy, ...)
+├── requirements-train.txt     # ML train/export (torch, onnx) -- not for CI/runtime
+├── ARCHITECTURE.md            # model + metrics + quantization + hardening write-up
 ├── pyproject.toml
 ├── Dockerfile                 # arm64-friendly
 ├── docker-compose.yml
 ├── .env.example
-└── .github/workflows/ci.yml   # lint + pytest (no hardware)
+└── .github/workflows/ci.yml   # ruff + mypy + bandit + pytest + alembic (no hardware)
 ```
 
 ## 🧪 Tests
@@ -363,7 +450,7 @@ tracker ID stability, every anomaly rule, alert debouncing, and the end-to-end s
 ## 🗺️ Roadmap
 
 - [ ] **Pi Camera fusion** — overlay/register the visible image with the thermal feed.
-- [ ] **TFLite / ONNX classifier** — optional learned person/animal head (still edge-only).
+- [x] **From-scratch CNN detector** — two-head (classification + center-heatmap) ONNX/INT8 model, edge-only, selectable backend.
 - [ ] **Sub-pixel thermal super-resolution** between MLX frames.
 - [ ] **MQTT / Home Assistant** alert channel.
 - [ ] **Multi-sensor rooms** — fuse several MLX90640s for wider coverage.

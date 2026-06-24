@@ -53,6 +53,7 @@ pi = [
     "scipy>=1.10",
 ]
 dev = ["pytest>=7.4", "pytest-cov>=4.1", "ruff>=0.3", "scipy>=1.10"]
+train = ["torch>=2.0", "onnx>=1.14", "onnxruntime>=1.16"]
 
 [project.urls]
 Homepage = "https://github.com/OCT0PUSPR/thermal-sentry"
@@ -68,7 +69,9 @@ packages = [
     "thermalsentry.sensors",
     "thermalsentry.processing",
     "thermalsentry.detection",
+    "thermalsentry.ml",
     "thermalsentry.alerts",
+    "thermalsentry.persistence",
     "thermalsentry.web",
 ]
 
@@ -96,3 +99,36 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["B011"]
+
+[tool.bandit]
+# Scan the package only (tests legitimately use asserts / fakes).
+exclude_dirs = ["tests", "alembic", "scripts"]
+# B110 (try/except/pass): used deliberately throughout as defensive isolation so
+# a single sensor/inference/metrics/subscriber error never crashes the pipeline.
+# Every such block is intentional resilience, not swallowed control flow.
+skips = ["B110"]
+
+[tool.mypy]
+python_version = "3.9"
+ignore_missing_imports = true        # torch / onnx / fastapi / paho stubs vary by env
+warn_unused_ignores = false
+warn_redundant_casts = true
+no_implicit_optional = true
+# Pragmatic gate: catch real type errors in the core without demanding full
+# annotations on every defensive/3rd-party-shaped boundary.
+check_untyped_defs = false
+disallow_incomplete_defs = false
+follow_imports = "silent"
+
+[[tool.mypy.overrides]]
+module = ["thermalsentry.ml.*"]
+# torch tensors are dynamically typed; the ML modules are import-guarded.
+ignore_errors = true
+
+# numpy ships PEP 695 `type` statements in its py3.12 stubs that mypy rejects
+# under python_version = "3.9"; skip following numpy (and its stubs) entirely.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+follow_imports = "skip"
+follow_imports_for_stubs = true
+ignore_missing_imports = true

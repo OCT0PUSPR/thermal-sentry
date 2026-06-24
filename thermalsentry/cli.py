@@ -94,13 +94,20 @@ def _settings_from_args(args: argparse.Namespace):
     return get_settings(**overrides)
 
 
-def _run_web(settings, record_path: Optional[str]) -> int:
+def _run_web(settings) -> int:
     import uvicorn
 
+    from .observability import configure_logging
     from .web.server import create_app
 
-    app = create_app(settings=settings, record_path=record_path, autostart=True)
-    uvicorn.run(app, host=settings.web_host, port=settings.web_port, log_level="info")
+    configure_logging(settings.observability)
+    app = create_app(settings=settings, autostart=True)
+    uvicorn.run(
+        app,
+        host=settings.web_host,
+        port=settings.web_port,
+        log_level=settings.observability.log_level.lower(),
+    )
     return 0
 
 
@@ -141,13 +148,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     if args.command == "serve":
         settings = _settings_from_args(args)
-        return _run_web(settings, record_path=None)
+        return _run_web(settings)
 
     if args.command == "run":
         settings = _settings_from_args(args)
         record_path = getattr(args, "record", None)
         if args.web:
-            return _run_web(settings, record_path=record_path)
+            return _run_web(settings)
         return _run_headless(settings, record_path=record_path, max_frames=args.frames)
 
     parser.print_help()

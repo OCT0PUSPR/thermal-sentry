@@ -2,10 +2,40 @@
 
 from __future__ import annotations
 
+import asyncio
+
 import numpy as np
 import pytest
 
 from thermalsentry import FRAME_COLS, FRAME_ROWS
+
+
+@pytest.fixture(autouse=True)
+def _ensure_event_loop():
+    """Guarantee a current event loop on the main thread for each test.
+
+    On Python 3.9 ``asyncio.run`` closes its loop and leaves the thread with no
+    current loop, so any later code that constructs an ``asyncio`` primitive
+    (e.g. ``AsyncRuntime`` builds an ``asyncio.Event`` in ``__init__``) outside a
+    running loop raises ``RuntimeError``. We install a fresh loop before each test
+    and tidy it up afterwards. Tests that call ``asyncio.run`` still work because
+    ``asyncio.run`` manages its own loop and restores ours via this fixture.
+    """
+    try:
+        loop = asyncio.get_event_loop()
+        if loop.is_closed():
+            raise RuntimeError("closed")
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    yield
+    # Re-establish a usable loop if the test (e.g. via asyncio.run) closed it.
+    try:
+        current = asyncio.get_event_loop()
+        if current.is_closed():
+            raise RuntimeError("closed")
+    except RuntimeError:
+        asyncio.set_event_loop(asyncio.new_event_loop())
 
 
 def make_frame(bodies, ambient=22.0, sigma=2.4, noise=0.0, seed=0):

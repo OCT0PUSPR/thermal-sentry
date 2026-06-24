@@ -91,7 +91,18 @@ class ThermalSentryApp:
     ) -> None:
         self.settings = settings or get_settings()
         self.source = build_source(self.settings)
-        self.detector = ThermalDetector(settings=self.settings.detection)
+        # ML backends (both fall back to classical if a model isn't available):
+        #   * crop classifier refines a classical blob's label, and/or
+        #   * the full-frame ML detector localises + classifies directly.
+        from .ml.backends import build_backend, build_detector_backend
+
+        self.classifier = build_backend(self.settings.ml)
+        self.ml_detector = build_detector_backend(self.settings.ml)
+        self.detector = ThermalDetector(
+            settings=self.settings.detection,
+            classifier=self.classifier,
+            detector_backend=self.ml_detector,
+        )
         self.tracker = CentroidTracker(settings=self.settings.tracker)
         self.anomaly = AnomalyEngine(settings=self.settings.anomaly)
         self.alerts = AlertManager(settings=self.settings.alerts)
@@ -153,6 +164,8 @@ class ThermalSentryApp:
             self._flush_recording()
 
     def _flush_recording(self) -> None:
+        if self._record_path is None:
+            return
         path = Path(self._record_path)
         path.parent.mkdir(parents=True, exist_ok=True)
         arr = np.stack(self._recorded, axis=0).astype(np.float32)

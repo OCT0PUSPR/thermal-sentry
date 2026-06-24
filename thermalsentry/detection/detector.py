@@ -17,7 +17,7 @@ The detector is tuned to find the right blobs on the synthetic data produced by
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import Any, List, Optional, Tuple
 
 import numpy as np
 
@@ -130,10 +130,25 @@ def label_connected_components(
 
 @dataclass
 class ThermalDetector:
-    """Detect and classify hot blobs in a thermal frame."""
+    """Detect and classify hot blobs in a thermal frame.
+
+    Two localisation paths:
+
+    * **classical** (default) -- threshold + connected components. If an ML
+      ``classifier`` (crop) backend is supplied it *refines* each blob's label
+      from a thermal crop.
+    * **ML detector** -- when a full-frame ``detector_backend`` (the two-head
+      CNN) is supplied and available, localisation comes from the model's
+      center-heatmap and classification heads.
+
+    Either ML path degrades gracefully to the classical detector when the model
+    is unavailable, so the classical detector is always the fallback.
+    """
 
     settings: DetectionSettings = field(default_factory=DetectionSettings)
     prefer_scipy: bool = True
+    classifier: Any = None  # ml.backends.ClassifierBackend | None
+    detector_backend: Any = None  # ml.backends.MLDetectorBackend | None
 
     def compute_threshold(self, frame: np.ndarray) -> float:
         """Compute the working hot-pixel threshold (deg C) for ``frame``."""
@@ -153,6 +168,15 @@ class ThermalDetector:
         """
         if frame.ndim != 2:
             raise ValueError("detect() expects a 2-D frame")
+
+        # ML detector path (full-frame two-head CNN), when available.
+        if self.detector_backend is not None:
+            try:
+                if self.detector_backend.available():
+                    return self._detect_ml(frame)
+            except Exception:
+                # Never let ML inference break the pipeline -- fall back below.
+                pass
 
         thr = self.compute_threshold(frame)
         mask = frame >= thr
@@ -176,6 +200,20 @@ class ThermalDetector:
             x1, y1 = int(np.max(xs)) + 1, int(np.max(ys)) + 1
 
             label_name, conf = self._classify(area, peak, mean)
+
+            # Optional ML refinement: classify the blob's thermal crop.
+            if self.classifier is not None:
+                crop = frame[y0:y1, x0:x1]
+                if crop.size > 0:
+                    try:
+                        ml_label, ml_conf = self.classifier.classify(crop, label_name)
+                        if ml_label != label_name:
+                            label_name = ml_label
+                            conf = ml_conf
+                    except Exception:
+                        # Never let an inference error break the pipeline.
+                        pass
+
             detections.append(
                 Detection(
                     centroid=(cx, cy),
@@ -190,6 +228,59 @@ class ThermalDetector:
 
         # Largest / hottest first.
         detections.sort(key=lambda d: (d.area, d.peak_temp_c), reverse=True)
+        return detections
+
+    def _detect_ml(self, frame: np.ndarray) -> List[Detection]:
+        """Localise + classify using the full-frame ML detector backend.
+
+        Each heatmap peak becomes a detection. A small bbox/area is estimated by
+        flood-filling outward from the center over pixels above the local
+        background so the tracker/anomaly engine keep working unchanged.
+        """
+        dets_raw, _scene_label, _scene_conf = self.detector_backend.detect_frame(frame)
+        thr = self.compute_threshold(frame)
+        detections: List[Detection] = []
+        h, w = frame.shape
+        for d in dets_raw:
+            cx, cy = d["centroid"]
+            ix, iy = int(round(cx)), int(round(cy))
+            ix = min(w - 1, max(0, ix))
+            iy = min(h - 1, max(0, iy))
+            # Estimate a bbox by growing a window until it drops below threshold.
+            x0, x1 = ix, ix
+            y0, y1 = iy, iy
+            for _ in range(max(h, w)):
+                grew = False
+                if x0 > 0 and frame[iy, x0 - 1] >= thr:
+                    x0 -= 1
+                    grew = True
+                if x1 < w - 1 and frame[iy, x1 + 1] >= thr:
+                    x1 += 1
+                    grew = True
+                if y0 > 0 and frame[y0 - 1, ix] >= thr:
+                    y0 -= 1
+                    grew = True
+                if y1 < h - 1 and frame[y1 + 1, ix] >= thr:
+                    y1 += 1
+                    grew = True
+                if not grew:
+                    break
+            region = frame[y0 : y1 + 1, x0 : x1 + 1]
+            area = int(np.count_nonzero(region >= thr)) or region.size
+            peak = float(d.get("peak_temp_c", float(np.max(region))))
+            mean = float(np.mean(region))
+            detections.append(
+                Detection(
+                    centroid=(float(cx), float(cy)),
+                    bbox=(int(x0), int(y0), int(x1) + 1, int(y1) + 1),
+                    area=area,
+                    peak_temp_c=peak,
+                    mean_temp_c=mean,
+                    label=str(d.get("label", "person")),
+                    confidence=float(d.get("score", 0.5)),
+                )
+            )
+        detections.sort(key=lambda dd: (dd.area, dd.peak_temp_c), reverse=True)
         return detections
 
     def _classify(self, area: int, peak: float, mean: float) -> Tuple[str, float]:

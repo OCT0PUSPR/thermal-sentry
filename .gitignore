@@ -36,6 +36,26 @@ captures/
 recordings/
 *.npy
 *.npz
+# Databases / event store + logs (never commit runtime data).
+*.db
+*.sqlite
+*.sqlite3
+*.log
+
+# ---- ML weights / datasets --------------------------------------------------
+# Never commit large/raw weights, training checkpoints, savedmodels or datasets.
+# The tiny proof artefacts (FP32 + INT8 ONNX, the <100 KB .pt checkpoint and the
+# JSON reports) ARE committed -- they are explicitly re-allowed below.
+*.pt
+*.pth
+*.ckpt
+*.tflite
+*_savedmodel/
+models/*.prep.onnx
+datasets/
+!models/thermal_cnn.pt
+!models/thermal_cnn.onnx
+!models/thermal_cnn_int8.onnx
 
 # ---- Node / frontend tooling (if added later) ------------------------------
 node_modules/

@@ -11,6 +11,22 @@ httpx>=0.26
 pillow>=10.0
 websockets>=12.0
 
+# --- Production hardening (event store, migrations, logging, metrics) -------
+# Imported by the persistence / observability / web layers. The numpy-only test
+# subset still imports the package without these, but the full hardened runtime
+# (DB-backed events + retention, structured logs, Prometheus /metrics) needs them.
+sqlalchemy>=2.0
+alembic>=1.12
+structlog>=24.1
+prometheus-client>=0.19
+
+# --- Optional, lazily-imported (guarded; the app degrades without them) -----
+# ONNX inference for the learned ML detector backend (CPU; also fine on the Pi):
+onnxruntime>=1.16
+# API rate limiting; MQTT alert channel. The web layer / MQTT channel guard these.
+slowapi>=0.1.9
+paho-mqtt>=1.6
+
 # --- Optional / heavier accelerators (recommended but not required) ---------
 # The pipeline runs without these (pure-numpy fallbacks exist). Install them for
 # faster connected-components / upscaling on the Pi.

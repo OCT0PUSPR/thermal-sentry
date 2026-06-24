@@ -39,7 +39,7 @@ except Exception as exc:  # pragma: no cover - exercised on laptops
     _HW_IMPORT_ERROR = exc
 
 
-_REFRESH_MAP = {}
+_REFRESH_MAP: dict = {}
 
 
 def _build_refresh_map() -> dict:
@@ -66,6 +66,9 @@ class MLX90640Source:
         self,
         refresh_rate: str = "8",
         i2c_frequency: int = 800_000,
+        max_retries: int = 3,
+        calibration=None,
+        i2c_address: int = 0x33,
     ) -> None:
         if _HW_IMPORT_ERROR is not None:
             raise RuntimeError(
@@ -80,32 +83,53 @@ class MLX90640Source:
         if not _REFRESH_MAP:
             _REFRESH_MAP = _build_refresh_map()
 
-        # 800 kHz I2C is required for stable high refresh rates.
-        self._i2c = busio.I2C(board.SCL, board.SDA, frequency=i2c_frequency)
-        self._mlx = adafruit_mlx90640.MLX90640(self._i2c)
-        self._mlx.refresh_rate = _REFRESH_MAP.get(
-            str(refresh_rate), adafruit_mlx90640.RefreshRate.REFRESH_8_HZ
-        )
+        self.max_retries = max_retries
+        self.calibration = calibration
+        self._i2c_frequency = i2c_frequency
+        self._i2c_address = i2c_address
+        self._refresh_rate = str(refresh_rate)
+        self._open()
         # Reusable flat buffer the driver fills in place (768 floats).
         self._buf = [0.0] * FRAME_PIXELS
 
-    def read(self) -> np.ndarray:
-        """Read one frame and return it as a ``(24, 32)`` deg-C array.
+    def _open(self) -> None:  # pragma: no cover - hardware-only path
+        # 800 kHz I2C is required for stable high refresh rates.
+        self._i2c = busio.I2C(board.SCL, board.SDA, frequency=self._i2c_frequency)
+        self._mlx = adafruit_mlx90640.MLX90640(self._i2c, address=self._i2c_address)
+        self._mlx.refresh_rate = _REFRESH_MAP.get(
+            self._refresh_rate, adafruit_mlx90640.RefreshRate.REFRESH_8_HZ
+        )
 
-        The driver fills a flat 768-element buffer in row-major order. A
-        transient ``ValueError`` (CRC / I2C glitch) is retried a few times.
+    def reset(self) -> None:  # pragma: no cover - hardware-only path
+        """Re-initialise the bus + sensor (recovery after persistent errors)."""
+        self.close()
+        self._open()
+
+    def read(self) -> np.ndarray:
+        """Read one frame and return it as a calibrated ``(24, 32)`` deg-C array.
+
+        The driver fills a flat 768-element buffer in row-major order. Transient
+        ``ValueError`` (CRC / I2C glitch) and ``OSError`` (bus error) are retried;
+        a bus reset is attempted before the final retry.
         """
-        attempts = 0
-        while True:
+        last_exc = None
+        for attempt in range(1, self.max_retries + 1):
             try:
                 self._mlx.getFrame(self._buf)
-                break
-            except ValueError:  # pragma: no cover - hardware glitch path
-                attempts += 1
-                if attempts >= 3:
-                    raise
-        frame = np.asarray(self._buf, dtype=np.float32).reshape(FRAME_ROWS, FRAME_COLS)
-        return frame
+                frame = np.asarray(self._buf, dtype=np.float32).reshape(
+                    FRAME_ROWS, FRAME_COLS
+                )
+                if self.calibration is not None:
+                    frame = self.calibration.apply(frame)
+                return frame
+            except (ValueError, OSError) as exc:  # pragma: no cover - hardware path
+                last_exc = exc
+                if attempt == self.max_retries - 1:
+                    try:
+                        self.reset()
+                    except Exception:
+                        pass
+        raise RuntimeError(f"MLX90640 read failed after {self.max_retries} attempts: {last_exc}")
 
     def close(self) -> None:
         try:  # pragma: no cover - hardware-only path

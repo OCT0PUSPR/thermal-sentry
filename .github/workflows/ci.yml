@@ -23,25 +23,43 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
 
-      - name: Install dependencies (no hardware, no heavy weights)
+      - name: Install dependencies (no hardware, no torch/training weights)
         run: |
           python -m pip install --upgrade pip
-          # Core + dev deps only. Pi/hardware libs are intentionally NOT installed.
+          # Core + dev deps only. Pi/hardware libs and torch (training) are
+          # intentionally NOT installed -- CI runs the numpy-only import path.
           pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: Ruff lint
-        run: ruff check thermalsentry tests
-
-      - name: Verify package imports without hardware libraries
+      - name: Verify package imports WITHOUT torch (numpy-only path)
         run: |
+          python -c "import sys; assert 'torch' not in sys.modules"
           python -c "import thermalsentry; print('thermalsentry', thermalsentry.__version__)"
+          python -c "import thermalsentry.ml; print('ml import-guarded OK (no torch)')"
           python -c "import thermalsentry.sensors.mlx90640 as m; print('mlx import-guarded OK')"
 
-      - name: Compile all sources
-        run: python -m compileall thermalsentry tests
+      - name: Ruff lint
+        run: ruff check thermalsentry tests scripts
 
-      - name: Run tests
-        run: pytest -q --cov=thermalsentry --cov-report=term-missing
+      - name: Mypy type-check
+        run: mypy thermalsentry
+
+      - name: Bandit security scan
+        run: bandit -c pyproject.toml -r thermalsentry
+
+      - name: Compile all sources
+        run: python -m compileall thermalsentry tests scripts
+
+      - name: Alembic migrations apply to a fresh DB
+        env:
+          TS_DB_URL: "sqlite:///ci_migrations.db"
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          rm -f ci_migrations.db
+
+      - name: Run tests + coverage (>= 80% on thermalsentry core)
+        run: |
+          pytest -q --cov=thermalsentry --cov-report=term-missing --cov-fail-under=80
 
       - name: Smoke-test the simulate pipeline (headless, 10 frames)
         run: |

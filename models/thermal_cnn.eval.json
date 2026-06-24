@@ -1,0 +1,33 @@
+{
+  "fp32": {
+    "model": "models/thermal_cnn.onnx",
+    "size_kb": 90.7,
+    "accuracy": 0.988,
+    "macro_f1": 0.988,
+    "per_class_acc": {
+      "background": 1.0,
+      "person": 0.99,
+      "animal": 0.964,
+      "hotspot": 0.998
+    },
+    "loc_recall": 0.9898,
+    "loc_precision": 0.9917
+  },
+  "int8": {
+    "model": "models/thermal_cnn_int8.onnx",
+    "size_kb": 39.3,
+    "accuracy": 0.9855,
+    "macro_f1": 0.9855,
+    "per_class_acc": {
+      "background": 1.0,
+      "person": 0.996,
+      "animal": 0.948,
+      "hotspot": 0.998
+    },
+    "loc_recall": 0.9902,
+    "loc_precision": 0.9619
+  },
+  "accuracy_delta_int8": -0.0025,
+  "f1_delta_int8": -0.0025,
+  "size_reduction_pct": 56.7
+}

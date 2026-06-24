@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>thermal-sentry · sign in</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body class="login-body">
+  <div class="login-card">
+    <div class="login-brand">
+      <span class="logo-dot"></span>
+      <h1>thermal<span class="accent">-sentry</span></h1>
+    </div>
+    <p class="login-sub">Operations dashboard &mdash; sign in to continue</p>
+    <form id="login-form">
+      <label>Username<input type="text" id="user" autocomplete="username" value="admin" /></label>
+      <label>Password<input type="password" id="pass" autocomplete="current-password" /></label>
+      <button type="submit" class="btn login-btn">Sign in</button>
+      <div id="login-err" class="login-err"></div>
+    </form>
+    <p class="login-hint">API clients: send <code>X-API-Key</code> instead.</p>
+  </div>
+  <script>
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const user = document.getElementById("user").value;
+      const pass = document.getElementById("pass").value;
+      const err = document.getElementById("login-err");
+      err.textContent = "";
+      const res = await fetch("/login", {
+        headers: { "Authorization": "Basic " + btoa(user + ":" + pass) },
+      });
+      if (res.ok) {
+        window.location.href = "/";
+      } else {
+        err.textContent = "Invalid credentials.";
+      }
+    });
+  </script>
+</body>
+</html>
